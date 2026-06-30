@@ -18,7 +18,7 @@ __all__ = [
 ]
 
 
-def fetch_all_odds(tour: str = "pga", **cache_kw) -> tuple[list[OddsRow], list[PickemLine]]:
+def fetch_all_odds(tour: str = "pga", **cache_kw) -> tuple[list[OddsRow], list[PickemLine], dict]:
     rows: list[OddsRow] = []
     # Reliable multi-book spine (cached feed).
     try:
@@ -36,10 +36,17 @@ def fetch_all_odds(tour: str = "pga", **cache_kw) -> tuple[list[OddsRow], list[P
             print(f"  [{fn.__name__}] failed: {e}")
 
     pickem: list[PickemLine] = []
+    specials: dict = {"matchups": [], "three_balls": [], "leaders": [], "groups": []}
     try:
-        pickem = fetch_dabble()
-        print(f"  [dabble] {len(pickem)} pick'em lines")
+        dab = fetch_dabble()
+        rows += dab["odds"]
+        pickem = dab["pickem"]
+        for k in specials:
+            specials[k] = dab[k]
+        print(f"  [dabble] {len(dab['odds'])} fixed-odds, {len(pickem)} pick'em, "
+              f"{len(dab['matchups'])} H2H, {len(dab['three_balls'])} 3-balls, "
+              f"{len(dab['leaders'])} leaders, {len(dab['groups'])} groups")
     except Exception as e:
         print(f"  [dabble] failed: {e}")
 
-    return rows, pickem
+    return rows, pickem, specials

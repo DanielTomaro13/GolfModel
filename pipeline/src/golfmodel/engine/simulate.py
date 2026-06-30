@@ -39,9 +39,8 @@ class SimResult:
     round_sd: np.ndarray       # [n, rounds]
     total_mean: np.ndarray     # [n] 72-hole total, conditional on making cut
     total_sd: np.ndarray       # [n]
-    positions: np.ndarray      # [sims, n] int16 competition rank (ties shared)
-    r1_scores: np.ndarray      # [sims, n] int16 round-1 strokes (for O/U)
-    r2_scores: np.ndarray      # [sims, n] round-2 strokes
+    positions: np.ndarray      # [sims, n] int16 final competition rank (ties shared)
+    round_scores: np.ndarray   # [sims, n, 4] int16 per-round strokes (all rounds)
 
     def idx(self, pid: int) -> int | None:
         try:
@@ -93,8 +92,7 @@ def simulate(
     total_sum = np.zeros(n); total_sumsq = np.zeros(n); made_count = np.zeros(n)
 
     positions_all = np.empty((num_sims, n), dtype=np.int16)
-    r1_all = np.empty((num_sims, n), dtype=np.int16)
-    r2_all = np.empty((num_sims, n), dtype=np.int16)
+    round_all = np.empty((num_sims, n, N_ROUNDS), dtype=np.int16)
 
     cut_rank = min(cut_line, n)
     done = 0
@@ -135,8 +133,7 @@ def simulate(
         made_count += made_cut.sum(axis=0)
 
         positions_all[done:done + b] = pos
-        r1_all[done:done + b] = scores[:, :, 0].astype(np.int16)
-        r2_all[done:done + b] = scores[:, :, 1].astype(np.int16)
+        round_all[done:done + b] = scores.astype(np.int16)
         done += b
 
     s = float(num_sims)
@@ -156,5 +153,5 @@ def simulate(
         make_cut=made / s,
         round_mean=round_mean, round_sd=np.sqrt(round_var),
         total_mean=total_mean, total_sd=np.sqrt(total_var),
-        positions=positions_all, r1_scores=r1_all, r2_scores=r2_all,
+        positions=positions_all, round_scores=round_all,
     )

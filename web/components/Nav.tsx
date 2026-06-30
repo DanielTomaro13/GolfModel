@@ -5,6 +5,7 @@ import Link from "next/link";
 const TABS = [
   { href: "/", label: "Board" },
   { href: "/value/", label: "Value" },
+  { href: "/matchups/", label: "Matchups" },
   { href: "/pickem/", label: "Pick'em" },
   { href: "/compare/", label: "Compare" },
   { href: "/players/", label: "Players" },

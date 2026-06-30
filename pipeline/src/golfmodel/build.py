@@ -87,7 +87,7 @@ def run(num_sims: int = 20_000, force_refresh: bool = False) -> None:
     res = simulate(field, num_sims=num_sims)
 
     print("3/5 scrape book odds + Dabble Pick'em…")
-    odds_rows, pickem_lines = fetch_all_odds(**cache_kw)
+    odds_rows, pickem_lines, specials = fetch_all_odds(**cache_kw)
 
     name_to_id = {normalize_name(p.name): p.pid for p in field.players}
     book_index: dict[tuple[str, str], dict[str, float]] = {}
@@ -143,10 +143,13 @@ def run(num_sims: int = 20_000, force_refresh: bool = False) -> None:
 
     value.sort(key=lambda v: v["edge"], reverse=True)
 
-    print("5/5 judge Pick'em + write feeds…")
+    print("5/5 judge Pick'em + price matchups/specials + write feeds…")
     pickem = _judge_pickem(pickem_lines, res, name_to_id)
+    extras = _price_specials(specials, res, name_to_id)
     players = _player_detail(field, res)
     meta = _meta(event_name, field, res, sched, num_sims, generated)
+    print(f"  extras: {len(extras['matchups'])} H2H, {len(extras['three_balls'])} 3-balls, "
+          f"{len(extras['leaders'])} leaders, {len(extras['groups'])} groups")
 
     _write("tournament-latest.json", {"generated": generated, "event": event_name,
             "source_win": field.source_win, "num_sims": num_sims, "players": board})
@@ -154,6 +157,8 @@ def run(num_sims: int = 20_000, force_refresh: bool = False) -> None:
     _write("value-latest.json", {"generated": generated, "event": event_name, "rows": value})
     _write("pickem-latest.json", {"generated": generated, "event": event_name, "lines": pickem}, keep_if_empty_key="lines")
     _write("players-latest.json", {"generated": generated, "event": event_name, "players": players})
+    _write("extras-latest.json", {"generated": generated, "event": event_name, **extras},
+           keep_if_empty_key="matchups")
     _write("meta-latest.json", meta)
     print(f"Done. {len(field.players)} players, {len(value)} value edges, {len(pickem)} pick'em lines.")
 
@@ -168,8 +173,8 @@ def _judge_pickem(lines, res, name_to_id) -> list[dict]:
             i = res.idx(pid)
             if i is not None:
                 prob = float(market_to_board[ln.market][i])
-        elif ln.market == "round_strokes" and pid is not None and ln.round in (1, 2):
-            ou = markets.round_over_under(res, pid, ln.line, kind=f"r{ln.round}")
+        elif ln.market == "round_strokes" and pid is not None and ln.round in (1, 2, 3, 4):
+            ou = markets.round_over_under(res, pid, ln.line, rnd=ln.round)
             prob = ou.get("under")
         rec = {
             "book": ln.book, "player": ln.player, "market": ln.market,
@@ -182,6 +187,119 @@ def _judge_pickem(lines, res, name_to_id) -> list[dict]:
         out.append(rec)
     out.sort(key=lambda r: (r.get("ev") is None, -(r.get("ev") or 0)))
     return out
+
+
+# Hygiene for the relational markets: ignore placeholder prices and noisy tails so
+# the "best EV" ranking surfaces real edges, not a 501.0 longshot.
+SPECIAL_MAX_PRICE = {"three_ball": 26.0, "leader": 81.0, "group": 19.0}
+SPECIAL_FLOOR = {"three_ball": 0.05, "leader": 0.015, "group": 0.05}
+EV_CAP = 1.0
+
+
+def _leg_ev(prob: float, price: float | None, kind: str) -> float | None:
+    """EV of backing a selection, or None if the price/prob isn't a real market."""
+    if not price or price <= 1.0 or price > SPECIAL_MAX_PRICE[kind]:
+        return None
+    if prob < SPECIAL_FLOOR[kind]:
+        return None
+    return min(EV_CAP, prob * price - 1.0)
+
+
+def _devig(prices: list[float]) -> list[float]:
+    inv = [1.0 / p for p in prices if p and p > 1.0]
+    s = sum(inv)
+    return [(1.0 / p) / s if (p and p > 1.0 and s > 0) else 0.0 for p in prices]
+
+
+def _price_specials(specials: dict, res, name_to_id) -> dict:
+    """Price Dabble's relational markets against the simulation; attach EV.
+
+    EV of backing a selection at decimal price P is model_prob * P - 1.
+    """
+    def pid(name):
+        return name_to_id.get(normalize_name(name))
+
+    matchups = []
+    for m in specials.get("matchups", []):
+        a, b = pid(m["a"]), pid(m["b"])
+        if a is None or b is None:
+            continue
+        mp = markets.matchup(res, a, b, rnd=m.get("round"))
+        if not mp:
+            continue
+        row = {"a": m["a"], "b": m["b"], "round": m.get("round"),
+               "model_a": round(mp["a"], 4), "model_b": round(mp["b"], 4), "model_tie": round(mp["tie"], 4),
+               "price_a": m.get("price_a"), "price_b": m.get("price_b"), "price_draw": m.get("price_draw")}
+        ev_a = mp["a"] * m["price_a"] - 1 if m.get("price_a") else None
+        ev_b = mp["b"] * m["price_b"] - 1 if m.get("price_b") else None
+        row["ev_a"] = round(ev_a, 4) if ev_a is not None else None
+        row["ev_b"] = round(ev_b, 4) if ev_b is not None else None
+        row["best_ev"] = round(max([e for e in (ev_a, ev_b) if e is not None], default=-1), 4)
+        matchups.append(row)
+    matchups.sort(key=lambda r: r["best_ev"], reverse=True)
+
+    three_balls = []
+    for t in specials.get("three_balls", []):
+        names = [p["player"] for p in t["players"]]
+        pids = [pid(n) for n in names]
+        if any(x is None for x in pids):
+            continue
+        tb = markets.three_ball(res, pids, rnd=t.get("round"))
+        if not tb:
+            continue
+        legs, best = [], None
+        for p, x in zip(t["players"], pids):
+            prob = tb.get(str(x), 0.0)
+            ev = _leg_ev(prob, p.get("price"), "three_ball")
+            if ev is not None:
+                best = ev if best is None else max(best, ev)
+            legs.append({"player": p["player"], "price": p["price"],
+                         "model_prob": round(prob, 4), "ev": round(ev, 4) if ev is not None else None})
+        three_balls.append({"round": t.get("round"), "players": legs,
+                            "best_ev": round(best, 4) if best is not None else None})
+    three_balls.sort(key=lambda r: (r["best_ev"] is None, -(r["best_ev"] or -1)))
+
+    leaders = []
+    for lp in specials.get("leaders", []):
+        rnd = lp["round"]
+        legs, best = [], None
+        for p in lp["players"]:
+            x = pid(p["player"])
+            if x is None:
+                continue
+            prob = markets.round_leader(res, x, rnd) or 0.0
+            ev = _leg_ev(prob, p.get("price"), "leader")
+            if ev is not None:
+                best = ev if best is None else max(best, ev)
+            legs.append({"player": p["player"], "price": p["price"],
+                         "model_prob": round(prob, 4), "ev": round(ev, 4) if ev is not None else None})
+        legs.sort(key=lambda r: -r["model_prob"])  # show by model favourite
+        if legs:
+            leaders.append({"round": rnd, "players": legs[:20],
+                            "best_ev": round(best, 4) if best is not None else None})
+    leaders.sort(key=lambda r: (r["best_ev"] is None, -(r["best_ev"] or -1)))
+
+    groups = []
+    for g in specials.get("groups", []):
+        members = [(p["player"], pid(p["player"]), p["price"]) for p in g["players"]]
+        members = [(n, x, pr) for n, x, pr in members if x is not None]
+        if len(members) < 2:
+            continue
+        gw = markets.group_winner(res, [x for _, x, _ in members])
+        legs, best = [], None
+        for n, x, pr in members:
+            prob = gw.get(str(x), 0.0)
+            ev = _leg_ev(prob, pr, "group")
+            if ev is not None:
+                best = ev if best is None else max(best, ev)
+            legs.append({"player": n, "price": pr, "model_prob": round(prob, 4),
+                         "ev": round(ev, 4) if ev is not None else None})
+        legs.sort(key=lambda r: -r["model_prob"])
+        groups.append({"group": g["group"], "players": legs,
+                       "best_ev": round(best, 4) if best is not None else None})
+    groups.sort(key=lambda r: (r["best_ev"] is None, -(r["best_ev"] or -1)))
+
+    return {"matchups": matchups, "three_balls": three_balls, "leaders": leaders, "groups": groups}
 
 
 def _player_detail(field, res) -> list[dict]:

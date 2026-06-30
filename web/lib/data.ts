@@ -39,6 +39,21 @@ export interface PlayerDetail {
   round_mean: number[]; round_sd: number[]; total_mean: number; total_sd: number;
   pos_quantiles: Record<string, number>;
 }
+export interface MatchupRow {
+  a: string; b: string; round: number | null;
+  model_a: number; model_b: number; model_tie: number;
+  price_a: number | null; price_b: number | null; price_draw: number | null;
+  ev_a: number | null; ev_b: number | null; best_ev: number;
+}
+export interface Leg { player: string; price: number | null; model_prob: number; ev: number | null; }
+export interface ThreeBall { round: number | null; players: Leg[]; best_ev: number | null; }
+export interface LeaderMkt { round: number; players: Leg[]; best_ev: number | null; }
+export interface GroupMkt { group: string; players: Leg[]; best_ev: number | null; }
+export interface Extras {
+  generated: string; event: string;
+  matchups: MatchupRow[]; three_balls: ThreeBall[]; leaders: LeaderMkt[]; groups: GroupMkt[];
+}
+
 export interface Meta {
   generated: string; event: string; tour: string; num_sims: number; field_size: number;
   source_win: string; cut_line: number;
@@ -65,6 +80,11 @@ export const getPickem = () =>
 export const getPlayers = () =>
   read<{ generated: string; event: string; players: PlayerDetail[] }>(
     "players-latest.json", { generated: "", event: "", players: [] });
+
+export const getExtras = () =>
+  read<Extras>("extras-latest.json", {
+    generated: "", event: "", matchups: [], three_balls: [], leaders: [], groups: [],
+  });
 
 export const getMeta = () =>
   read<Meta>("meta-latest.json", {
