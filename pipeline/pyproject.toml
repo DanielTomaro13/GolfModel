@@ -1,0 +1,9 @@
+[project]
+name = "golfmodel-pipeline"
+version = "0.1.0"
+description = "Monte Carlo golf pricing engine + data feed + bookmaker odds scrapers"
+requires-python = ">=3.10"
+dependencies = ["requests>=2.31", "numpy>=1.26", "python-dotenv>=1.0"]
+
+[tool.setuptools.packages.find]
+where = ["src"]

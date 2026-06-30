@@ -1,0 +1,91 @@
+@import "tailwindcss";
+
+:root {
+  --bg: #0a1410;
+  --bg-soft: #0f1d16;
+  --panel: #122a1e;
+  --panel-2: #16331f;
+  --border: #1f4730;
+  --text: #e8f3ec;
+  --muted: #8fae9c;
+  --accent: #34d27b;
+  --accent-dim: #1f8a4d;
+  --gold: #e7c14b;
+  --danger: #f0656a;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-panel: var(--panel);
+  --color-border: var(--border);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-gold: var(--gold);
+  --color-danger: var(--danger);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+html { color-scheme: dark; }
+body {
+  background:
+    radial-gradient(1200px 600px at 80% -10%, #14301f 0%, transparent 60%),
+    radial-gradient(900px 500px at -10% 10%, #102619 0%, transparent 55%),
+    var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+a { color: inherit; text-decoration: none; }
+
+.container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 0 16px; }
+.panel {
+  background: linear-gradient(180deg, var(--panel) 0%, var(--bg-soft) 100%);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--muted); background: rgba(255,255,255,0.02);
+}
+.tabular { font-variant-numeric: tabular-nums; }
+
+/* Data table. NB: the class is intentionally NOT "grid" — that collides with
+   Tailwind's .grid utility (display:grid) and breaks table column alignment. */
+table.dtable { width: 100%; border-collapse: collapse; font-size: 14px; }
+table.dtable thead th {
+  position: sticky; top: 0; z-index: 1;
+  text-align: right; font-weight: 600; color: var(--muted);
+  padding: 11px 10px; background: var(--panel-2);
+  border-bottom: 1px solid var(--border); white-space: nowrap;
+  user-select: none;
+}
+table.dtable thead th.sortable { cursor: pointer; }
+table.dtable thead th.sortable:hover { color: var(--text); }
+table.dtable thead th.active { color: var(--accent); }
+table.dtable thead th.left, table.dtable tbody td.left { text-align: left; }
+table.dtable tbody td {
+  text-align: right; padding: 10px 10px;
+  border-bottom: 1px solid rgba(31,71,48,0.45); white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+table.dtable tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+table.dtable tbody tr:hover { background: rgba(52,210,123,0.08); }
+table.dtable td.num { font-variant-numeric: tabular-nums; }
+/* Probability heat cell: alpha scales with --p (0..1). */
+.heat { position: relative; }
+.heat::before {
+  content: ""; position: absolute; inset: 3px 4px; border-radius: 5px;
+  background: var(--accent); opacity: calc(var(--p) * 0.5); z-index: -1;
+}
+.pos { color: var(--accent); font-weight: 600; }
+.good { color: var(--accent); }
+.bad { color: var(--danger); }
+.muted { color: var(--muted); }
+.gold { color: var(--gold); }
+
+.bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,0.06); overflow: hidden; }
+.bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--accent-dim), var(--accent)); }

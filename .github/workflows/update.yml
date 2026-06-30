@@ -1,0 +1,43 @@
+name: Update data
+
+# Manual only. Click "Run workflow" in the Actions tab when you want fresh numbers.
+# Re-prices the Monte Carlo model, refreshes odds, and commits the JSON feeds — the
+# commit then triggers the Deploy site workflow. Nothing runs on a schedule.
+on:
+  workflow_dispatch:
+    inputs:
+      sims:
+        description: "Number of Monte Carlo simulations"
+        default: "20000"
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pipeline deps
+        run: pip install -r pipeline/requirements.txt
+      - name: Re-price model + refresh odds
+        env:
+          FEED_API_KEY: ${{ secrets.FEED_API_KEY }}
+          FEED_BASE_URL: ${{ secrets.FEED_BASE_URL }}
+        run: |
+          export PYTHONPATH=pipeline/src
+          python -m golfmodel.build --sims=${{ github.event.inputs.sims || '20000' }} --refresh
+      - name: Commit refreshed feeds
+        run: |
+          git config user.name  "golf-model-bot"
+          git config user.email "golf-model-bot@users.noreply.github.com"
+          git add web/public/data/*.json
+          if git diff --cached --quiet; then
+            echo "No changes."
+          else
+            git commit -m "Update data ($(date -u +%Y-%m-%dT%H:%MZ))"
+            git push
+          fi
