@@ -23,7 +23,9 @@ export default function AboutPage() {
           Each round is an independent draw around a player&apos;s rating, the field is ranked, the
           halfway cut (top {meta.cut_line}) applied, and ties broken by a random playoff. Every market —
           winner, top 5/10/20, make-cut, round and tournament totals, matchups — is read straight off the
-          empirical frequencies of those simulations.
+          empirical frequencies of those simulations. The round-to-round scoring spread is calibrated to
+          years of historical round scores, and mid-field ratings are anchored to fundamental skill so the
+          make-cut and top-finish numbers hold up, not just the winner.
         </Section>
         <Section title="Finding value">
           Model prices are compared to the bookmaker consensus across a dozen-plus books, and to

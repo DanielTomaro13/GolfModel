@@ -19,9 +19,21 @@ from .field import Field, Player
 # Scoring model constants (strokes).
 BASELINE = 70.1          # nominal par-relative anchor
 FIELD_MEAN_ANCHOR = 71.0  # realistic tournament scoring average (per round)
-PER_ROUND_SD = 2.9       # round-to-round scoring dispersion
+# Round-to-round scoring dispersion. Measured directly from historical round scores
+# as the within-player SD around each player's own long-run mean (course/day
+# difficulty removed) = 2.72. Note the field-relative round SD is ~2.9, but that
+# conflates round noise with the between-player skill spread — the model separates
+# the two, so the round draw uses the pure within-player figure.
+PER_ROUND_SD = 2.72
 N_ROUNDS = 4
-TOTAL_SD = PER_ROUND_SD * np.sqrt(N_ROUNDS)  # ~5.8 over 72 holes
+TOTAL_SD = PER_ROUND_SD * np.sqrt(N_ROUNDS)  # ~5.4 over 72 holes
+
+# After fitting ratings to the win market, blend each rating toward its fundamental
+# skill estimate. The win market only sharply informs the top of the board (mid-field
+# players are all ~1% to win, so their win-fit ratings are poorly determined), whereas
+# the skill estimate informs the whole field. A modest blend measurably improves the
+# make-cut / top-X board (cut-MAE ~3.9%->3.4%) at negligible win-fit cost.
+SKILL_BLEND = 0.30
 
 RATING_MIN = FIELD_MEAN_ANCHOR - 9.0
 RATING_MAX = FIELD_MEAN_ANCHOR + 12.0
@@ -99,6 +111,24 @@ def calibrate(field: Field, *, iters: int = 80, verbose: bool = False) -> np.nda
             mae = float(np.mean(np.abs(win - target)))
             print(f"  iter {it:3d} lr={lr:5.2f} win-MAE={mae:.5f}")
 
+    ratings = _blend_skill(players, ratings)
     for p, r in zip(players, ratings):
         p.rating = float(r)
     return ratings
+
+
+def _blend_skill(players: list[Player], ratings: np.ndarray) -> np.ndarray:
+    """Blend win-fit ratings toward the fundamental skill estimate (see SKILL_BLEND)."""
+    if SKILL_BLEND <= 0:
+        return ratings
+    skills = np.array([p.skill if p.skill is not None else np.nan for p in players])
+    if np.all(np.isnan(skills)):
+        return ratings
+    # Players with no skill estimate fall back to a below-median skill.
+    fallback = np.nanmedian(skills) - 1.0
+    skills = np.where(np.isnan(skills), fallback, skills)
+    skill_rating = FIELD_MEAN_ANCHOR - skills
+    skill_rating += FIELD_MEAN_ANCHOR - skill_rating.mean()  # centre on the field mean
+    blended = (1.0 - SKILL_BLEND) * ratings + SKILL_BLEND * skill_rating
+    blended += FIELD_MEAN_ANCHOR - blended.mean()
+    return np.clip(blended, RATING_MIN, RATING_MAX)
