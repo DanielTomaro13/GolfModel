@@ -2,6 +2,8 @@
 
 > **Status, September 2026:** GitHub Actions are currently paused on this repo, so automated data refreshes and deploys are not running. The data and any live site reflect the last build.
 
+[![Screenshot of the live site](.github/screenshot.png)](https://danieltomaro13.github.io/GolfModel/)
+
 A Monte Carlo stroke-simulation engine that prices a whole golf tournament — winner,
 top-5/10/20, make-cut, round and tournament totals, player matchups, and Dabble
 Pick'em — and flags value against the bookmakers. Static site deploys to GitHub Pages.
